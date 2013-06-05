@@ -35,8 +35,8 @@ import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
 /**
- * 閫氫俊璐︽埛data鏃ュ織娓呮礂
- * 灏嗗惈鏈塓UERYINFO淇℃伅鐨勮鎸夌渷浠ｇ爜娓呮礂鍒颁笉鍚屾枃浠朵腑,鐢ㄤ簬涓嬩竴姝ョ户缁竻鐞嗗瓧娈靛�
+ * 通信账户data日志清洗
+ * 将含有QUERYINFO信息的行按省代码清洗到不同文件中,用于下一步继续清理字段值
  * @author mengxin
  * 
  */
@@ -119,8 +119,8 @@ public class MobilePayLogETL extends Configured implements Tool {
 		}
 		long startTime = System.currentTimeMillis();
 		Configuration conf = new Configuration();
-		String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();// 鍙傛暟瑙ｆ瀽
-		// DistributedCache淇濆瓨灏忛鐪佷唤鍒楄〃鏂囦欢鍐呭
+		String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();// 参数解析
+		// DistributedCache保存小额省份列表文件内容
 		DistributedCache.createSymlink(conf);
 		try {
 			DistributedCache.addCacheFile(new URI(otherArgs[0]), conf);
@@ -154,8 +154,8 @@ public class MobilePayLogETL extends Configured implements Tool {
 		}
 		MultipleOutputs.addNamedOutput(job, "unknown"+otherArgs[1], TextOutputFormat.class,Text.class, Text.class);
 		boolean commit = job.waitForCompletion(true);
-		logger.info("mobilepaydatalog浠诲姟鎵ц瀹屾垚,鑰楁椂:"
-				+ (System.currentTimeMillis() - startTime) + "姣");
+		logger.info("mobilepaydatalog任务执行完成,耗时:"
+				+ (System.currentTimeMillis() - startTime) + "毫秒");
 		return commit ? 0 : 1;
 	}
 
