@@ -97,7 +97,7 @@ public class MobilePayFieldTransfer extends Configured implements Tool {
 					sb.append(",");
 				}
 			}
-			if(provincemap.get(fields[5]).equals(fields.length)){
+			if(Integer.parseInt(provincemap.get(fields[5]))==fields.length){
 				context.write(new Text(sb.toString()), NullWritable.get());
 			}else{
 				context.getCounter("datacompletion", "lackfields").increment(1);
@@ -116,12 +116,12 @@ public class MobilePayFieldTransfer extends Configured implements Tool {
 
 	public int run(String[] args) throws Exception {
 		if (args.length < 2) {
-			System.err.println("Usage: mobilepaytransfer <in> ... <out>");
+			System.err.println("Usage: mobilepaytransfer <xelist> <in> ... <out>");
 			return -1;
 		}
 		long startTime = System.currentTimeMillis();
 		Configuration conf = new Configuration();
-		String[] otherArgs = new GenericOptionsParser(getConf(), args).getRemainingArgs();
+		String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();
 		// DistributedCache保存小额省份列表文件内容
 		DistributedCache.createSymlink(conf);
 		try {
@@ -130,7 +130,7 @@ public class MobilePayFieldTransfer extends Configured implements Tool {
 			System.err.println(e);
 			return -2;
 		}
-		Job job = new Job(getConf(), "mobilepaytransfer");
+		Job job = new Job(conf, "mobilepaytransfer");
 		job.setJarByClass(MobilePayFieldTransfer.class);
 		job.setMapperClass(MobilePayFieldTransferMap.class);
 		job.setReducerClass(MobilePayFieldTransferReduce.class);
