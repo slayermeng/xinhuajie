@@ -1,4 +1,4 @@
-package org.data.xinhuajie.mobilepay.mapreduce;
+package org.data.xinhuajie.mapreduce;
 
 import java.io.IOException;
 import java.util.regex.Matcher;

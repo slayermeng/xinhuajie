@@ -92,7 +92,7 @@ public class MobilePayLogETL extends Configured implements Tool {
 			String line = new String(value.getBytes(), 0, value.getLength(),"GBK");
 			if (line.contains("QUERYINFO")) {
 				String[] data = line.split(",");
-				String fn = provincemap.get(data[3]);
+				String fn = provincemap.get(data[5]);
 				if (fn == null || fn.equals("")) {
 					fn = "unknown";
 				}
@@ -148,7 +148,6 @@ public class MobilePayLogETL extends Configured implements Tool {
 		String s = null;
 		while ((s = reader.readLine()) != null) {
 			String[] value = s.split("\t");
-			System.out.println(value[0]);
 			MultipleOutputs.addNamedOutput(job, value[0]+otherArgs[1],
 					TextOutputFormat.class, Text.class, Text.class);
 		}

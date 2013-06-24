@@ -9,6 +9,11 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 
+/**
+ * 合并多个本地文件到一个HDFS文件中
+ * @author mengxin
+ *
+ */
 public class PutMerge {
 	public static void main(String[] args) throws IOException{
 		Configuration conf = new Configuration();
@@ -22,7 +27,6 @@ public class PutMerge {
 			for(int i=0;i<inputFiles.length;i++){
 				System.out.println(inputFiles[i].getPath().getName());
 				FSDataInputStream in = local.open(inputFiles[i].getPath());
-				local.open(inputFiles[i].getPath());
 				byte buffer[] = new byte[256];
 				int bytesRead = 0;
 				while((bytesRead = in.read(buffer))>0){
