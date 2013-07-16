@@ -1,84 +1,103 @@
 package org.data.xinhuajie.mapreduce;
 
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.DefaultStringifier;
+import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapred.FileInputFormat;
-import org.apache.hadoop.mapred.FileOutputFormat;
-import org.apache.hadoop.mapred.JobClient;
-import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.MapReduceBase;
-import org.apache.hadoop.mapred.Mapper;
-import org.apache.hadoop.mapred.OutputCollector;
-import org.apache.hadoop.mapred.Reporter;
-import org.apache.hadoop.mapred.lib.IdentityReducer;
-import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
 
-public class DistributedGrep extends Configured implements Tool {
+public class DistributedGrep implements JobFactory {
 	private static final Log logger = LogFactory.getLog(DistributedGrep.class);
-	
-	public static class RegexMapper<K> extends MapReduceBase implements
-			Mapper<K, Text, Text, Text> {
+
+	public static class RegexMapper extends
+			Mapper<LongWritable, Text, Text, Text> {
 
 		private Pattern pattern;
 		private int group;
-
-		public void configure(JobConf job) {
-			pattern = Pattern.compile(job.get("mapred.mapper.regex"));
-			group = job.getInt("mapred.mapper.regex.group", 0);
+		
+		@Override
+		protected void setup(Context context) throws IOException,
+				InterruptedException {
+			Configuration conf = context.getConfiguration();
+			Text reggroup = DefaultStringifier.load(conf, "group", Text.class);
+			pattern = Pattern.compile(DefaultStringifier.load(conf, "regex", Text.class).toString());
+			if(reggroup!=null){
+				group = Integer.parseInt(reggroup.toString());
+			}else{
+				group = 0;
+			}
+			
 		}
 
-		public void map(K key, Text value, OutputCollector<Text, Text> output,
-				Reporter reporter) throws IOException {
+		public void map(LongWritable offset, Text value, Context context)
+				throws IOException {
 			String text = value.toString();
 			Matcher matcher = pattern.matcher(text);
 			while (matcher.find()) {
-				output.collect(new Text("match:"+matcher.group(group)), new Text(text));
+				try {
+					context.write(new Text("match:" + matcher.group(group)),
+							new Text(text));
+				} catch (InterruptedException e) {
+					logger.error(e);
+				}
 			}
 		}
 
 	}
 
-	private DistributedGrep() {
-	} // singleton
+	public static class RegexReduce extends
+			Reducer<Text, Text, Text, Text> {
+		public void reduce(Text key, Iterable<Text> values,
+				Reducer<Text, Text, Text, Text>.Context context)
+				throws IOException, InterruptedException {
+			Iterator it = values.iterator();
+			while (it.hasNext()) {
+				context.write(key, new Text(it.next().toString()));
+			}
+			
+		}
+	}
 
-	public int run(String[] args) throws Exception {
+	public Job buildSubmitJob(String[] args) throws Exception {
 		if (args.length < 3) {
 			System.out.println("Grep <inDir> <outDir> <regex> [<group>]");
 			ToolRunner.printGenericCommandUsage(System.out);
-			return -1;
+			return null;
 		}
-
-		JobConf grepJob = new JobConf(getConf(), DistributedGrep.class);
-		grepJob.setJobName("grep-search");
-		FileInputFormat.setInputPaths(grepJob, args[0]);
-		FileOutputFormat.setOutputPath(grepJob, new Path(args[1]));
+		Configuration conf = new Configuration();
+		DefaultStringifier.store(conf, new Text(args[0]) ,"regex");
+		if (args.length == 4){
+			DefaultStringifier.store(conf, new Text(args[2]) ,"group");
+		}else{
+			DefaultStringifier.store(conf, new Text("0") ,"group");
+		}
+		Job grepJob = new Job(conf, "grep-search");
+		grepJob.setJarByClass(DistributedGrep.class);
 		grepJob.setMapperClass(RegexMapper.class);
-		grepJob.setReducerClass(IdentityReducer.class);
-		grepJob.set("mapred.mapper.regex", args[2]);
-		if (args.length == 4)
-			grepJob.set("mapred.mapper.regex.group", args[3]);
+		grepJob.setReducerClass(RegexReduce.class);
+		FileInputFormat.setInputPaths(grepJob, args[1]);
+		if(args.length==4){
+			FileOutputFormat.setOutputPath(grepJob, new Path(args[3]));
+		}else{
+			FileOutputFormat.setOutputPath(grepJob, new Path(args[2]));
+		}
 		grepJob.setOutputKeyClass(Text.class);
 		grepJob.setOutputValueClass(Text.class);
-		long startTime = System.currentTimeMillis();
-		JobClient.runJob(grepJob);
-		logger.info("DistributedGrep任务执行完成,耗时:"
-				+ (System.currentTimeMillis() - startTime) + "毫秒");
-		return 0;
+		grepJob.setNumReduceTasks(1);
+		grepJob.submit();
+		return grepJob;
 	}
-
-	public static void main(String[] args) throws Exception {
-		int res = ToolRunner.run(new Configuration(), new DistributedGrep(),
-				args);
-		System.exit(res);
-	}
-
 }
