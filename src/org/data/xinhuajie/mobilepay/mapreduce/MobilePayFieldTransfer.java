@@ -3,6 +3,8 @@ package org.data.xinhuajie.mobilepay.mapreduce;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.HashMap;
@@ -15,14 +17,18 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.filecache.DistributedCache;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.Mapper.Context;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.mapreduce.lib.output.MultipleOutputs;
+import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
@@ -37,6 +43,8 @@ public class MobilePayFieldTransfer extends Configured implements Tool {
 
 		private Map<String, String> provincemap = new HashMap<String, String>();
 		
+		private MultipleOutputs<Text, NullWritable> mos;
+		
 		Pattern p = Pattern.compile("\\}$");
 		Matcher m = null;
 
@@ -48,6 +56,7 @@ public class MobilePayFieldTransfer extends Configured implements Tool {
 		@Override
 		protected void setup(Context context) throws IOException,
 				InterruptedException {
+			mos = new MultipleOutputs<Text, NullWritable>(context);
 			try {
 				Path[] cacheFiles = DistributedCache.getLocalCacheFiles(context
 						.getConfiguration());
@@ -97,11 +106,26 @@ public class MobilePayFieldTransfer extends Configured implements Tool {
 					sb.append(",");
 				}
 			}
-			if(Integer.parseInt(provincemap.get(fields[5]))==fields.length){
-				context.write(new Text(sb.toString()), NullWritable.get());
+			String[] checklength = provincemap.get(fields[5]).split("\\|");
+			if(Integer.parseInt(checklength[0])==fields.length){
+				mos.write(fields[5]+checklength[0], new Text(sb.toString()), NullWritable.get());
+				context.getCounter("datacompletion", "fullfields").increment(1);
+				return;
+			}
+			if(checklength.length>1&&Integer.parseInt(checklength[1])==fields.length){
+				mos.write(fields[5]+checklength[1], new Text(sb.toString()), NullWritable.get());
+				context.getCounter("datacompletion", "fullfields").increment(1);
 			}else{
+				logger.info("不合格数据"+line);
 				context.getCounter("datacompletion", "lackfields").increment(1);
 			}
+		}
+		
+		@Override
+		protected void cleanup(Context context) throws IOException,
+				InterruptedException {
+			mos.close();
+			super.cleanup(context);
 		}
 	}
 
@@ -141,6 +165,22 @@ public class MobilePayFieldTransfer extends Configured implements Tool {
 		}
 		FileOutputFormat.setOutputPath(job, new Path(
 				otherArgs[otherArgs.length - 1]));
+		
+		String uri = otherArgs[0];
+		FileSystem fs = FileSystem.get(URI.create(otherArgs[0]),conf);
+		InputStream in = null;
+		in = fs.open(new Path(uri));
+		BufferedReader reader = new BufferedReader(new InputStreamReader(in));
+		String s = null;
+		while ((s = reader.readLine()) != null) {
+			String[] value = s.split("\t");
+			String[] value1 = value[1].split("\\|");
+			for(int i=0;i<value1.length;i++){
+				MultipleOutputs.addNamedOutput(job, value[0]+value1[i],
+						TextOutputFormat.class, Text.class, Text.class);
+			}
+		}
+		
 		boolean commit = job.waitForCompletion(true);
 		logger.info("mobilepaytransfer任务执行完成,耗时:"
 				+ (System.currentTimeMillis() - startTime) + "毫秒");
